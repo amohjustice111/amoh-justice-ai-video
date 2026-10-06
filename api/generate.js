@@ -58,14 +58,21 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ videoUrl, message: 'Video generated successfully.' });
   } catch (error) {
     console.error('Runway generation error:', error);
-    if (error instanceof TaskFailedError) {
-      return res.status(502).json({
-        error: error.taskDetails?.failure || error.taskDetails?.error || 'Runway could not generate the video.',
-      });
-    }
-    if (error instanceof TaskTimedOutError) {
-      return res.status(504).json({ error: 'The video generation took too long. Please try again.' });
-    }
-    return res.status(500).json({ error: error && error.message ? error.message : 'Video generation failed.' });
-  }
-};
+   if (error?.taskDetails?.failure || error?.taskDetails?.error) {
+  return res.status(502).json({
+    error:
+      error.taskDetails.failure ||
+      error.taskDetails.error ||
+      'Runway could not generate the video.',
+  });
+}
+
+if (error?.name === 'TaskTimedOutError' || error?.name === 'TimeoutError') {
+  return res.status(504).json({
+    error: 'The video generation took too long. Please try again.',
+  });
+}
+
+return res.status(500).json({
+  error: error?.message || 'Video generation failed.',
+});
