@@ -1,21 +1,22 @@
-AMOH JUSTICE AI VIDEO
+# AMOH JUSTICE AI VIDEO — Vercel build
 
-This is the first deployable website build using the exact supplied AMOH JUSTICE logo.
+This version is configured for Vercel, not Netlify.
 
-Rules in this version:
-- 6 sec = 10 app credits
-- 10 sec = 15 app credits
-- 100 starting credits in the browser demo
-- Optional referral after 3 generated videos, reward 10 credits
-- WhatsApp help +233 546 389 770
-- Paystack-ready payment UI
-- Netlify Function prepared for Runway AI
+## Vercel setup
+1. Import/upload the project to the GitHub repository used by the Vercel project.
+2. In Vercel → Settings → Environment Variables, add `RUNWAYML_API_SECRET` as a Secret for Production (and Preview/Development if desired).
+3. Redeploy after changing the environment variable.
+4. The frontend calls `/api/generate`, which is the Vercel serverless function in `api/generate.js`.
 
-LIVE SETUP REQUIRED:
-1. Deploy to Netlify.
-2. Set RUNWAYML_API_SECRET in Netlify environment variables.
-3. For production, replace browser localStorage credits with a real database/server ledger.
-4. Add a server-side Paystack initialize + webhook/verification flow before granting purchased credits.
-5. Add anti-abuse controls for free/referral credits.
+The Runway key is never exposed to the browser.
 
-Never put secret keys in index.html or browser JavaScript.
+## Runway
+The backend uses the official `@runwayml/sdk` and Gen-4.5 text/image-to-video API. Text-to-video supports landscape and portrait ratios; square is available when an input image is supplied.
+
+## Important production work still needed
+- Replace localStorage credits with a real database/ledger.
+- Add authenticated users.
+- Add secure Paystack initialize/verify endpoints and webhook handling.
+- Add rate limiting and abuse prevention.
+- Store generated video references in a database.
+- Add referral anti-abuse checks.
