@@ -1,15 +1,13 @@
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') {
-    return res.status(405).json({
-      error: 'Method not allowed'
-    });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const apiKey = process.env.RUNWAYML_API_SECRET;
 
   if (!apiKey) {
     return res.status(503).json({
-      error: 'Runway is not connected. Add RUNWAYML_API_SECRET in Vercel.'
+      error: 'Runway is not connected in Vercel.'
     });
   }
 
@@ -22,7 +20,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const runwayResponse = await fetch(
+    const response = await fetch(
       'https://api.dev.runwayml.com/v1/tasks/' +
         encodeURIComponent(taskId),
       {
@@ -34,41 +32,22 @@ module.exports = async function handler(req, res) {
       }
     );
 
-    const raw = await runwayResponse.text();
+    const data = await response.json().catch(() => ({}));
 
-    let task;
-
-    try {
-      task = JSON.parse(raw);
-    } catch {
-      return res.status(502).json({
-        error: 'Runway returned an invalid status response.'
-      });
-    }
-
-    if (!runwayResponse.ok) {
-      console.error('Runway status error:', task);
-
-      return res.status(runwayResponse.status).json({
+    if (!response.ok) {
+      return res.status(response.status).json({
         error:
-          task?.error?.message ||
-          task?.message ||
-          task?.error ||
-          'Could not check the Runway task.'
+          data?.error?.message ||
+          data?.message ||
+          'Could not check Runway task.'
       });
     }
 
-    if (task.status === 'SUCCEEDED') {
+    if (data.status === 'SUCCEEDED') {
       const videoUrl =
-        Array.isArray(task.output) && task.output.length
-          ? task.output[0]
+        Array.isArray(data.output)
+          ? data.output[0]
           : null;
-
-      if (!videoUrl) {
-        return res.status(502).json({
-          error: 'Runway finished but did not return a video URL.'
-        });
-      }
 
       return res.status(200).json({
         status: 'SUCCEEDED',
@@ -76,32 +55,27 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    if (task.status === 'FAILED') {
+    if (data.status === 'FAILED') {
       return res.status(200).json({
         status: 'FAILED',
         error:
-          task.failure ||
-          task.error ||
+          data.failure ||
+          data.error ||
           'Runway could not generate the video.'
       });
     }
 
-    if (task.status === 'CANCELED') {
-      return res.status(200).json({
-        status: 'FAILED',
-        error: 'The Runway video task was canceled.'
-      });
-    }
-
     return res.status(200).json({
-      status: task.status || 'PENDING'
+      status: data.status || 'RUNNING'
     });
 
   } catch (error) {
-    console.error('Status error:', error);
+    console.error('Status API error:', error);
 
     return res.status(500).json({
-      error: error?.message || 'Could not check video status.'
+      error:
+        error?.message ||
+        'Could not check video status.'
     });
   }
 };
