@@ -36,56 +36,61 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const allowedRatios = [
-      '1280:720',
-      '720:1280',
-      '960:960'
-    ];
-
-    if (!allowedRatios.includes(ratio)) {
+    if (!['1280:720', '720:1280', '960:960'].includes(ratio)) {
       return res.status(400).json({
         error: 'Unsupported aspect ratio.'
       });
     }
 
-    if (!promptImage && ratio === '960:960') {
-      return res.status(400).json({
-        error:
-          'For text-only video, choose Landscape or Portrait.'
+    const client = new RunwayML();
+
+    let task;
+
+    /*
+     * IMAGE-TO-VIDEO
+     */
+    if (promptImage) {
+      task = await client.imageToVideo.create({
+        model: 'gen4.5',
+        promptImage: promptImage,
+        promptText: prompt,
+        ratio: ratio,
+        duration: duration
       });
     }
 
-    const client = new RunwayML();
+    /*
+     * TEXT-TO-VIDEO
+     */
+    else {
+      if (ratio === '960:960') {
+        return res.status(400).json({
+          error:
+            'Square 1:1 is available when you add an image. For text-only video, choose Landscape or Portrait.'
+        });
+      }
 
-    const input = {
-      model: 'gen4.5',
-      promptText: prompt,
-      ratio,
-      duration
-    };
-
-    if (promptImage) {
-      input.promptImage = promptImage;
+      task = await client.textToVideo.create({
+        model: 'gen4.5',
+        promptText: prompt,
+        ratio: ratio,
+        duration: duration
+      });
     }
 
-    const task = await client.imageToVideo.create(input);
+    if (!task || !task.id) {
+      return res.status(502).json({
+        error: 'Runway did not return a video task ID.'
+      });
+    }
 
     return res.status(200).json({
       taskId: task.id,
-      status: task.status || 'PENDING'
+      status: 'PENDING'
     });
 
   } catch (error) {
     console.error('Runway generation error:', error);
-
-    if (error?.taskDetails?.failure || error?.taskDetails?.error) {
-      return res.status(502).json({
-        error:
-          error.taskDetails.failure ||
-          error.taskDetails.error ||
-          'Runway could not generate the video.'
-      });
-    }
 
     return res.status(500).json({
       error: error?.message || 'Video generation failed.'
