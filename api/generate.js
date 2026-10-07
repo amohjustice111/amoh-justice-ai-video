@@ -2,9 +2,7 @@ const RunwayML = require('@runwayml/sdk').default;
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({
-      error: 'Method not allowed'
-    });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   if (!process.env.RUNWAYML_API_SECRET) {
@@ -25,9 +23,7 @@ module.exports = async function handler(req, res) {
     const promptImage = body.promptImage || null;
 
     if (!prompt) {
-      return res.status(400).json({
-        error: 'Please enter a video prompt.'
-      });
+      return res.status(400).json({ error: 'Please enter a video prompt.' });
     }
 
     if (![6, 10].includes(duration)) {
@@ -42,45 +38,31 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    if (!promptImage && ratio === '960:960') {
+      return res.status(400).json({
+        error: 'For text-only video, choose Landscape or Portrait.'
+      });
+    }
+
     const client = new RunwayML();
 
-    let task;
+    const input = {
+      model: 'gen4.5',
+      promptText: prompt,
+      ratio,
+      duration
+    };
 
-    /*
-     * IMAGE-TO-VIDEO
-     */
+    // Only include promptImage when the user actually selected an image.
     if (promptImage) {
-      task = await client.imageToVideo.create({
-        model: 'gen4.5',
-        promptImage: promptImage,
-        promptText: prompt,
-        ratio: ratio,
-        duration: duration
-      });
+      input.promptImage = promptImage;
     }
 
-    /*
-     * TEXT-TO-VIDEO
-     */
-    else {
-      if (ratio === '960:960') {
-        return res.status(400).json({
-          error:
-            'Square 1:1 is available when you add an image. For text-only video, choose Landscape or Portrait.'
-        });
-      }
-
-      task = await client.textToVideo.create({
-        model: 'gen4.5',
-        promptText: prompt,
-        ratio: ratio,
-        duration: duration
-      });
-    }
+    const task = await client.imageToVideo.create(input);
 
     if (!task || !task.id) {
       return res.status(502).json({
-        error: 'Runway did not return a video task ID.'
+        error: 'Runway did not return a task ID.'
       });
     }
 
