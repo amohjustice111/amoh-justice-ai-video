@@ -2,13 +2,14 @@ const RunwayML = require('@runwayml/sdk').default;
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({
+      error: 'Method not allowed'
+    });
   }
 
   if (!process.env.RUNWAYML_API_SECRET) {
     return res.status(503).json({
-      error:
-        'Runway is not connected. Add RUNWAYML_API_SECRET in Vercel Environment Variables and redeploy.',
+      error: 'Runway is not connected. Add RUNWAYML_API_SECRET in Vercel.'
     });
   }
 
@@ -25,28 +26,32 @@ module.exports = async function handler(req, res) {
 
     if (!prompt) {
       return res.status(400).json({
-        error: 'Please enter a video prompt.',
+        error: 'Please enter a video prompt.'
       });
     }
 
     if (![6, 10].includes(duration)) {
       return res.status(400).json({
-        error: 'Duration must be 6 or 10 seconds.',
+        error: 'Duration must be 6 or 10 seconds.'
       });
     }
 
-    const allowedRatios = ['1280:720', '720:1280', '960:960'];
+    const allowedRatios = [
+      '1280:720',
+      '720:1280',
+      '960:960'
+    ];
 
     if (!allowedRatios.includes(ratio)) {
       return res.status(400).json({
-        error: 'Unsupported aspect ratio.',
+        error: 'Unsupported aspect ratio.'
       });
     }
 
     if (!promptImage && ratio === '960:960') {
       return res.status(400).json({
         error:
-          'Square text-to-video is not supported by the selected Runway model. Choose Landscape or Portrait, or add an image.',
+          'For text-only video, choose Landscape or Portrait.'
       });
     }
 
@@ -56,33 +61,20 @@ module.exports = async function handler(req, res) {
       model: 'gen4.5',
       promptText: prompt,
       ratio,
-      duration,
+      duration
     };
 
     if (promptImage) {
       input.promptImage = promptImage;
     }
 
-    const task = await client.imageToVideo
-      .create(input)
-      .waitForTaskOutput({
-        timeout: 9 * 60 * 1000,
-      });
-
-    const videoUrl =
-      task && Array.isArray(task.output) ? task.output[0] : null;
-
-    if (!videoUrl) {
-      return res.status(502).json({
-        error:
-          'Runway completed the task but did not return a video URL.',
-      });
-    }
+    const task = await client.imageToVideo.create(input);
 
     return res.status(200).json({
-      videoUrl,
-      message: 'Video generated successfully.',
+      taskId: task.id,
+      status: task.status || 'PENDING'
     });
+
   } catch (error) {
     console.error('Runway generation error:', error);
 
@@ -91,22 +83,12 @@ module.exports = async function handler(req, res) {
         error:
           error.taskDetails.failure ||
           error.taskDetails.error ||
-          'Runway could not generate the video.',
-      });
-    }
-
-    if (
-      error?.name === 'TaskTimedOutError' ||
-      error?.name === 'TimeoutError'
-    ) {
-      return res.status(504).json({
-        error:
-          'The video generation took too long. Please try again.',
+          'Runway could not generate the video.'
       });
     }
 
     return res.status(500).json({
-      error: error?.message || 'Video generation failed.',
+      error: error?.message || 'Video generation failed.'
     });
   }
 };
