@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
 
   if (!apiKey) {
     return res.status(503).json({
-      error: 'Runway is not connected. Add RUNWAYML_API_SECRET in Vercel.'
+      error: 'Runway API key is missing in Vercel.'
     });
   }
 
@@ -20,10 +20,6 @@ module.exports = async function handler(req, res) {
     const prompt = String(body.prompt || '').trim();
     const duration = Number(body.duration);
     const ratio = String(body.ratio || '1280:720');
-    const promptImage =
-      typeof body.promptImage === 'string' && body.promptImage.trim()
-        ? body.promptImage
-        : null;
 
     if (!prompt) {
       return res.status(400).json({
@@ -31,37 +27,35 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    if (![6, 10].includes(duration)) {
+    if (duration !== 6 && duration !== 10) {
       return res.status(400).json({
         error: 'Duration must be 6 or 10 seconds.'
       });
     }
 
-    if (!['1280:720', '720:1280', '960:960'].includes(ratio)) {
+    const isLandscape = ratio === '1280:720';
+    const isPortrait = ratio === '720:1280';
+
+    if (!isLandscape && !isPortrait) {
       return res.status(400).json({
-        error: 'Unsupported aspect ratio.'
+        error: 'For text-to-video, choose Landscape or Portrait.'
       });
     }
 
-    if (!promptImage && ratio === '960:960') {
-      return res.status(400).json({
-        error:
-          'Square video requires an image. Choose Landscape or Portrait for text-only video.'
-      });
-    }
-
+    /*
+     * IMPORTANT:
+     * Start with TEXT-TO-VIDEO only.
+     * We are deliberately not sending promptImage yet.
+     * This removes the image validation problem completely.
+     */
     const runwayBody = {
       model: 'gen4.5',
       promptText: prompt,
-      ratio,
-      duration
+      ratio: ratio,
+      duration: duration
     };
 
-    if (promptImage) {
-      runwayBody.promptImage = promptImage;
-    }
-
-    const runwayResponse = await fetch(
+    const response = await fetch(
       'https://api.dev.runwayml.com/v1/image_to_video',
       {
         method: 'POST',
@@ -74,7 +68,7 @@ module.exports = async function handler(req, res) {
       }
     );
 
-    const raw = await runwayResponse.text();
+    const raw = await response.text();
 
     let data;
 
@@ -82,27 +76,39 @@ module.exports = async function handler(req, res) {
       data = JSON.parse(raw);
     } catch {
       return res.status(502).json({
-        error:
-          'Runway returned an unexpected response: ' +
-          raw.slice(0, 300)
+        error: 'Runway returned an invalid response.'
       });
     }
 
-    if (!runwayResponse.ok) {
-      console.error('Runway API error:', data);
+    if (!response.ok) {
+      console.error('RUNWAY ERROR:', JSON.stringify(data));
 
-      const message =
-        data?.error?.message ||
-        data?.message ||
-        data?.error ||
-        'Runway rejected the video request.';
+      let message = 'Runway rejected the request.';
 
-      return res.status(runwayResponse.status).json({
-        error: String(message)
+      if (data?.issues && Array.isArray(data.issues)) {
+        message = data.issues
+          .map(issue => {
+            const path = Array.isArray(issue.path)
+              ? issue.path.join('.')
+              : '';
+
+            return path
+              ? `${path}: ${issue.message || issue.code || 'Invalid value'}`
+              : issue.message || issue.code || 'Invalid value';
+          })
+          .join(' | ');
+      } else if (data?.error?.message) {
+        message = data.error.message;
+      } else if (data?.message) {
+        message = data.message;
+      }
+
+      return res.status(response.status).json({
+        error: message
       });
     }
 
-    if (!data.id) {
+    if (!data?.id) {
       return res.status(502).json({
         error: 'Runway did not return a task ID.'
       });
@@ -110,11 +116,11 @@ module.exports = async function handler(req, res) {
 
     return res.status(200).json({
       taskId: data.id,
-      status: 'PENDING'
+      status: data.status || 'PENDING'
     });
 
   } catch (error) {
-    console.error('Generate error:', error);
+    console.error('SERVER ERROR:', error);
 
     return res.status(500).json({
       error: error?.message || 'Video generation failed.'
