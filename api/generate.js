@@ -1,13 +1,16 @@
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({
+      error: 'Method not allowed'
+    });
   }
 
   const apiKey = process.env.RUNWAYML_API_SECRET;
 
   if (!apiKey) {
     return res.status(503).json({
-      error: 'Runway API key is missing in Vercel.'
+      error:
+        'Runway is not connected. Add RUNWAYML_API_SECRET in Vercel and redeploy.'
     });
   }
 
@@ -27,27 +30,19 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    if (duration !== 6 && duration !== 10) {
+    if (![6, 10].includes(duration)) {
       return res.status(400).json({
         error: 'Duration must be 6 or 10 seconds.'
       });
     }
 
-    const isLandscape = ratio === '1280:720';
-    const isPortrait = ratio === '720:1280';
-
-    if (!isLandscape && !isPortrait) {
+    if (!['1280:720', '720:1280'].includes(ratio)) {
       return res.status(400).json({
-        error: 'For text-to-video, choose Landscape or Portrait.'
+        error:
+          'Please choose Landscape or Portrait for text-to-video.'
       });
     }
 
-    /*
-     * IMPORTANT:
-     * Start with TEXT-TO-VIDEO only.
-     * We are deliberately not sending promptImage yet.
-     * This removes the image validation problem completely.
-     */
     const runwayBody = {
       model: 'gen4.5',
       promptText: prompt,
@@ -68,35 +63,28 @@ module.exports = async function handler(req, res) {
       }
     );
 
-    const raw = await response.text();
-
-    let data;
-
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      return res.status(502).json({
-        error: 'Runway returned an invalid response.'
-      });
-    }
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      console.error('RUNWAY ERROR:', JSON.stringify(data));
+      console.error(
+        'RUNWAY ERROR:',
+        JSON.stringify(data)
+      );
 
       let message = 'Runway rejected the request.';
 
-      if (data?.issues && Array.isArray(data.issues)) {
+      if (
+        data &&
+        Array.isArray(data.issues) &&
+        data.issues.length
+      ) {
         message = data.issues
-          .map(issue => {
-            const path = Array.isArray(issue.path)
-              ? issue.path.join('.')
-              : '';
-
-            return path
-              ? `${path}: ${issue.message || issue.code || 'Invalid value'}`
-              : issue.message || issue.code || 'Invalid value';
-          })
-          .join(' | ');
+          .map(issue =>
+            issue.message ||
+            issue.detail ||
+            JSON.stringify(issue)
+          )
+          .join(' ');
       } else if (data?.error?.message) {
         message = data.error.message;
       } else if (data?.message) {
@@ -110,7 +98,8 @@ module.exports = async function handler(req, res) {
 
     if (!data?.id) {
       return res.status(502).json({
-        error: 'Runway did not return a task ID.'
+        error:
+          'Runway accepted the request but did not return a task ID.'
       });
     }
 
@@ -120,10 +109,15 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('SERVER ERROR:', error);
+    console.error(
+      'Generate API error:',
+      error
+    );
 
     return res.status(500).json({
-      error: error?.message || 'Video generation failed.'
+      error:
+        error?.message ||
+        'Video generation failed.'
     });
   }
 };
