@@ -9,5 +9,234 @@
 <section id='help' class='section panel help'><div><span class='eyebrow'>NEED HELP?</span><h2>Chat on WhatsApp</h2><p>+233 546 389 770</p></div><a class='btn primary' href='https://wa.me/233546389770?text=Hello%20AMOH%20JUSTICE%2C%20I%20need%20help%20with%20the%20AI%20Video%20app.' target='_blank'>Open WhatsApp</a></section></main>
 <footer><span>AMOH JUSTICE AI VIDEO</span><span>Dream • Believe • Achieve</span></footer><div class='toast' id='toast'></div>
 <script>
-const $=x=>document.querySelector(x);const toast=m=>{let t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)};let credits=+localStorage.amohCredits||100,generated=+localStorage.amohGenerated||0,duration=6;function save(){localStorage.amohCredits=credits;localStorage.amohGenerated=generated;$('#creditsPill').textContent=credits+' credits'}save();$('#prompt').oninput=e=>$('#count').textContent=e.target.value.length+'/1200';document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-d]').forEach(x=>x.classList.remove('active'));b.classList.add('active');duration=+b.dataset.d;$('#cost').textContent=duration===6?10:15});$('#image').onchange=e=>e.target.files[0]&&toast('Image selected: '+e.target.files[0].name);$('#generate').onclick=async()=>{let prompt=$('#prompt').value.trim(),cost=duration===6?10:15,imageFile=$('#image').files[0];if(!prompt)return toast('Write a prompt first.');if(credits<cost)return toast('Not enough credits. Buy more credits.');if(!imageFile&&$('#ratio').value==='960:960')return toast('For text-only video, choose Landscape or Portrait.');$('#generate').disabled=true;$('#generate').textContent='Generating…';$('#state').textContent='GENERATING';try{let promptImage=null;if(imageFile){if(imageFile.size>6*1024*1024)throw Error('Image is too large. Please choose an image under 6 MB.');promptImage=await new Promise((resolve,reject)=>{let r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(Error('Could not read the image.'));r.readAsDataURL(imageFile)});}let r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,duration,ratio:$('#ratio').value,promptImage})});let raw=await r.text(),d;try{d=JSON.parse(raw)}catch{throw Error(raw.slice(0,220)||'The video service returned an invalid response.');}if(!r.ok)throw Error(d.error||'Generation failed.');credits-=cost;generated++;save();if(d.videoUrl){$('#result').innerHTML='<video controls autoplay src="'+d.videoUrl+'"></video>';$('#download').href=d.videoUrl;$('#download').classList.remove('disabled')}else{$('#result').innerHTML='<div class="placeholder"><div class="play">✓</div><b>Generation complete</b><p>'+((d.message)||'Your provider returned no video URL.')+'</p></div>'}$('#state').textContent='COMPLETE';toast('Video generated. '+cost+' credits used.');if(generated===3)toast('🎉 Optional referral reward unlocked!')}catch(e){$('#state').textContent='NOT CONNECTED';toast(e.message||'Generation failed.')}finally{$('#generate').disabled=false;$('#generate').innerHTML='✨ Generate video · <span id="cost">'+cost+'</span> credits'}};$('#new').onclick=()=>{location.reload()};document.querySelectorAll('.buy').forEach(b=>b.onclick=()=>toast('Payment checkout will use your configured Paystack account.'));$('#ref').onclick=()=>{if(generated<3)return toast('Generate '+(3-generated)+' more video'+(3-generated===1?'':'s')+' to unlock the optional referral.');let id=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36)).slice(0,10),link=location.origin+'/?ref='+id;navigator.clipboard?.writeText(link);toast('Referral link copied. Share it to earn 10 credits after qualification.')};
-</script></body></html>
+const $ = x => document.querySelector(x);
+
+const toast = m => {
+  const t = $('#toast');
+  t.textContent = m;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+};
+
+let credits = +localStorage.amohCredits || 100;
+let generated = +localStorage.amohGenerated || 0;
+let duration = 6;
+
+function save() {
+  localStorage.amohCredits = credits;
+  localStorage.amohGenerated = generated;
+  $('#creditsPill').textContent = credits + ' credits';
+}
+
+save();
+
+$('#prompt').oninput = e => {
+  $('#count').textContent = e.target.value.length + '/1200';
+};
+
+document.querySelectorAll('[data-d]').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('[data-d]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    duration = +b.dataset.d;
+    $('#cost').textContent = duration === 6 ? 10 : 15;
+  };
+});
+
+$('#image').onchange = e => {
+  if (e.target.files[0]) {
+    toast('Image selected: ' + e.target.files[0].name);
+  }
+};
+
+async function checkVideoStatus(taskId, cost) {
+  for (let attempt = 0; attempt < 120; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    const response = await fetch('/api/status?taskId=' + encodeURIComponent(taskId));
+    const raw = await response.text();
+
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(raw.slice(0, 220) || 'Invalid response from video service.');
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not check video status.');
+    }
+
+    if (data.status === 'SUCCEEDED') {
+      if (!data.videoUrl) {
+        throw new Error('Runway completed the video but did not return a video URL.');
+      }
+
+      credits -= cost;
+      generated++;
+      save();
+
+      $('#result').innerHTML =
+        '<video controls autoplay src="' +
+        data.videoUrl +
+        '"></video>';
+
+      $('#download').href = data.videoUrl;
+      $('#download').classList.remove('disabled');
+
+      $('#state').textContent = 'COMPLETE';
+
+      toast('Video generated. ' + cost + ' credits used.');
+
+      if (generated === 3) {
+        setTimeout(() => {
+          toast('🎉 Optional referral reward unlocked!');
+        }, 1200);
+      }
+
+      return;
+    }
+
+    if (data.status === 'FAILED') {
+      throw new Error(data.error || 'Runway could not generate the video.');
+    }
+
+    $('#state').textContent = 'GENERATING';
+  }
+
+  throw new Error('The video is taking too long. Please try again later.');
+}
+
+$('#generate').onclick = async () => {
+  const prompt = $('#prompt').value.trim();
+  const cost = duration === 6 ? 10 : 15;
+  const imageFile = $('#image').files[0];
+
+  if (!prompt) {
+    return toast('Write a prompt first.');
+  }
+
+  if (credits < cost) {
+    return toast('Not enough credits. Buy more credits.');
+  }
+
+  if (!imageFile && $('#ratio').value === '960:960') {
+    return toast('For text-only video, choose Landscape or Portrait.');
+  }
+
+  $('#generate').disabled = true;
+  $('#generate').textContent = 'Starting…';
+  $('#state').textContent = 'STARTING';
+
+  try {
+    let promptImage = null;
+
+    if (imageFile) {
+      if (imageFile.size > 6 * 1024 * 1024) {
+        throw new Error('Image is too large. Please choose an image under 6 MB.');
+      }
+
+      promptImage = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => resolve(reader.result);
+
+        reader.onerror = () =>
+          reject(new Error('Could not read the image.'));
+
+        reader.readAsDataURL(imageFile);
+      });
+    }
+
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        prompt,
+        duration,
+        ratio: $('#ratio').value,
+        promptImage
+      })
+    });
+
+    const raw = await response.text();
+
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(
+        raw.slice(0, 220) ||
+        'The video service returned an invalid response.'
+      );
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not start generation.');
+    }
+
+    if (!data.taskId) {
+      throw new Error('Runway did not return a task ID.');
+    }
+
+    $('#generate').textContent = 'Generating…';
+    $('#state').textContent = 'GENERATING';
+
+    await checkVideoStatus(data.taskId, cost);
+
+  } catch (error) {
+    console.error(error);
+
+    $('#state').textContent = 'ERROR';
+
+    toast(error.message || 'Generation failed.');
+
+  } finally {
+    $('#generate').disabled = false;
+
+    $('#generate').innerHTML =
+      '✨ Generate video · <span id="cost">' +
+      (duration === 6 ? 10 : 15) +
+      '</span> credits';
+  }
+};
+
+$('#new').onclick = () => {
+  location.reload();
+};
+
+document.querySelectorAll('.buy').forEach(b => {
+  b.onclick = () =>
+    toast('Payment checkout will use your configured Paystack account.');
+});
+
+$('#ref').onclick = () => {
+  if (generated < 3) {
+    const remaining = 3 - generated;
+
+    return toast(
+      'Generate ' +
+      remaining +
+      ' more video' +
+      (remaining === 1 ? '' : 's') +
+      ' to unlock the optional referral.'
+    );
+  }
+
+  const id = (
+    crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36)
+  ).slice(0, 10);
+
+  const link = location.origin + '/?ref=' + id;
+
+  navigator.clipboard?.writeText(link);
+
+  toast('Referral link copied. Share it to earn 10 credits after qualification.');
+};
+</script>
