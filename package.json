@@ -1,1 +1,7 @@
-{"name":"amoh-justice-ai-video","private":true,"dependencies":{"@runwayml/sdk":"^1.2.0"}}
+{
+  "name": "amoh-justice-ai-video",
+  "private": true,
+  "dependencies": {
+    "@runwayml/sdk": "^4.21.0"
+  }
+}
